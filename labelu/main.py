@@ -14,7 +14,7 @@ from labelu.alembic_labelu.run_migrate import run_sqlite_migrations
 
 
 description = """
-labelU backend.
+数荣量标多模态标注后台 backend.
 
 ## Users
 
@@ -71,14 +71,14 @@ tags_metadata = [
 
 
 app = FastAPI(
-    title="labelU",
+    title="数荣量标",
     description=description,
     version="0.1.0",
     terms_of_service="",
     contact={
-        "name": "labelu",
-        "url": "http://labelu.example.com/contact/",
-        "email": "labelu@example.com",
+        "name": "xs pang",
+        "url": "http://syndataworks.com",
+        "email": "pangxs@wszf.com",
     },
     license_info={
         "name": "Apache 2.0",
@@ -125,7 +125,7 @@ cli = Typer()
 
 @cli.command()
 def main(
-    host: str = "localhost", port: int = 8000, media_host: str = "http://localhost:8000"
+    host: str = "", port: int = 8000, media_host: str = "http://localhost:8000"
 ):
     if port:
         settings.PORT = port
