@@ -62,7 +62,7 @@ if [ "$1" = "true" ]; then
   unzip -o $filename
 
   # 删除下载的zip文件
-  #rm $filename
+  rm $filename
 
   # 移动到指定目录
   mv dist/* labelu/internal/statics
