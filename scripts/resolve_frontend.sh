@@ -56,7 +56,7 @@ echo "filename: $filename"
 # 如果第一个参数为true，则下载zip文件
 if [ "$1" = "true" ]; then
   # 下载zip文件
-  #wget $url
+  wget $url
 
   # 解压zip文件
   unzip -o $filename
