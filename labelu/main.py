@@ -77,7 +77,7 @@ app = FastAPI(
     terms_of_service="",
     contact={
         "name": "xs pang",
-        "url": "http://syndataworks.com",
+        "url": "http://www.syndataworks.cn",
         "email": "pangxs@wszf.com",
     },
     license_info={
