@@ -96,7 +96,8 @@ async def list_by(
             state=sample.state,
             data=json.loads(sample.data),
             annotated_count=sample.annotated_count,
-            file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
+            # file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
+            file=None, # 去掉预览，加快预览速度。
             created_at=sample.created_at,
             created_by=UserResp(
                 id=sample.owner.id,
