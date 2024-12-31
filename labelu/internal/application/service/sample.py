@@ -97,7 +97,7 @@ async def list_by(
             data=json.loads(sample.data),
             annotated_count=sample.annotated_count,
             # file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
-            file=None, # 去掉预览，加快预览速度。
+            file=AttachmentResponse(id=449, filename='4f8f2a4dc3fe00adeb998757ea4b9727.png', url="/api/v1/tasks/attachment/upload/6/4f8f2a4dc3fe00adeb998757ea4b9727.png"), # 去掉预览，加快预览速度。
             created_at=sample.created_at,
             created_by=UserResp(
                 id=sample.owner.id,
