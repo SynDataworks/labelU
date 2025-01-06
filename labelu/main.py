@@ -94,21 +94,26 @@ add_exception_handler(app=app)
 add_router(app=app)
 add_middleware(app=app)
 
-class NoCacheStaticFiles(StaticFiles):
-    def __init__(self, *args: Any, **kwargs: Any):
-        self.cachecontrol = "max-age=0, no-cache, no-store, , must-revalidate"
-        self.pragma = "no-cache"
-        self.expires = "0"
-        super().__init__(*args, **kwargs)
+# class NoCacheStaticFiles(StaticFiles):
+#     def __init__(self, *args: Any, **kwargs: Any):
+#         self.cachecontrol = "max-age=0, no-cache, no-store, , must-revalidate"
+#         self.pragma = "no-cache"
+#         self.expires = "0"
+#         super().__init__(*args, **kwargs)
 
-    def file_response(self, *args: Any, **kwargs: Any) -> Response:
-        resp = super().file_response(*args, **kwargs)
-        resp.headers.setdefault("Cache-Control", self.cachecontrol)
-        resp.headers.setdefault("Pragma", self.pragma)
-        resp.headers.setdefault("Expires", self.expires)
-        return resp
+#     def file_response(self, *args: Any, **kwargs: Any) -> Response:
+#         resp = super().file_response(*args, **kwargs)
+#         resp.headers.setdefault("Cache-Control", self.cachecontrol)
+#         resp.headers.setdefault("Pragma", self.pragma)
+#         resp.headers.setdefault("Expires", self.expires)
+#         return resp
 
-app.mount("", NoCacheStaticFiles(packages=["labelu.internal"], html=True))
+# app.mount("", NoCacheStaticFiles(packages=["labelu.internal"], html=True))
+app.mount(
+    "",
+    StaticFiles(packages=["labelu.internal"], html=True),
+    name="static"
+)
 
 
 @app.middleware("http")
