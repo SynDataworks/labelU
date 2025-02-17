@@ -13,6 +13,7 @@ from pathlib import Path
 
 import mozjpeg_lossless_optimization
 from PIL import Image
+from tqdm import tqdm
 
 def generate_output_path(fp, output=None):
     """
@@ -288,7 +289,23 @@ class ImageCompressor:
                 raise ValueError(f'"{output_format}": Unsupported output file format')
         return compressed_img_bytes
 
+def compress_file_folder(folder_path):
+    """
+    Compresses all the images in the specified folder.
+
+    :param folder_path: The path of the folder containing the images.
+    :type folder_path: Path
+    """
+    dir = Path(folder_path)
+    file_list = os.listdir(dir)
+    for file in tqdm(file_list):
+        if file.endswith('.jpg') or file.endswith('.jpeg') or file.endswith('.png'):
+            path = Path(dir / file)
+            ImageCompressor.compress_image(path, force=True, quality=80, output=path)
+
 
 if __name__ == "__main__":
-    ImageCompressor.cli_compress()
+    # ImageCompressor.cli_compress()
+    folder = '/Users/laihongchang/projects/syndataworks/blog/src/assets/article_images'
+    compress_file_folder(folder)
     # ImageCompressor.compress_image(Path('./images/'), force=False, quality=80, output=Path('./images/'))

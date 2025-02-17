@@ -8,7 +8,10 @@ from enum import Enum
 
 import xml.etree.ElementTree as ET
 from typing import List
+from fastapi import status
 from loguru import logger
+
+from labelu.internal.common.error_code import ErrorCode, LabelUException
 
 from .xml_converter import XML_converter
 from .tf_record_converter import TF_record_converter
@@ -754,11 +757,11 @@ class Converter:
         # result struct
         xml_converter = XML_converter()
         root = ET.Element("root")
-        sample_item = ET.SubElement(root, "sample")
         
         for sample in input_data:
             data = json.loads(sample.get("data"))
             file = sample.get("file", {})
+            sample_item = ET.SubElement(root, "sample")
             
             # skip invalid data
             annotated_result = json.loads(data.get("result"))
@@ -788,7 +791,8 @@ class Converter:
                             annotations.append(annotation)
                
         tree = ET.ElementTree(root)
-        tree.write(file_full_path, encoding="utf-8", xml_declaration=True)
+        with open(file_full_path, 'wb') as f:
+            tree.write(f, encoding='utf-8', xml_declaration=True)
         logger.info("Export file path: {}", file_full_path)
         return file_full_path
     
@@ -799,8 +803,16 @@ class Converter:
         # result struct
         tf_record_examples = TF_record_converter().create_tf_examples(input_data, config)
         
+        if len(tf_record_examples) == 0:
+            raise LabelUException(
+                code=ErrorCode.CODE_61000_NO_DATA,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
         for sample in input_data:
             file = sample.get("file", {})
+            if len(tf_record_examples) == 0:
+                continue
             example = tf_record_examples.pop(0)
             file_basename = os.path.splitext(file.get("filename", ""))[0]
             tf_record = f"{file_basename}.tfrecord"
