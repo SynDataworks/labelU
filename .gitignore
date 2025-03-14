@@ -167,3 +167,6 @@ cython_debug/
 # if the local history plugin is installed in vscode, when we modify or add code, a folder 
 # .history will be added in project, but it is not the needed file.
 .history/
+
+.DS_Store
+*/.DS_Store
