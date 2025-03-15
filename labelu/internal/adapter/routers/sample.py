@@ -74,27 +74,42 @@ async def list_by(
     """
     Get a annotation result.
     """
-
+    print('begining:  get list by samples')
     if len([i for i in (after, before, page) if i != None]) != 1:
         raise LabelUException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             code=ErrorCode.CODE_55000_SAMPLE_LIST_PARAMETERS_ERROR,
         )
-
+    print('call service.list_by')
     # business logic
-    data, total = await service.list_by(
-        db=db,
-        task_id=task_id,
-        after=after,
-        before=before,
-        page=page,
-        size=size,
-        sorting=sort,
-    )
-
-    # response
-    meta_data = MetaData(total=total, page=page, size=len(data))
-    return OkRespWithMeta[List[SampleResponse]](meta_data=meta_data, data=data)
+    try:
+        data, total = await service.list_by(
+            db=db,
+            task_id=task_id,
+            after=after,
+            before=before,
+            page=page,
+            size=size,
+            sorting=sort,
+        )
+        print("Service call completed successfully")
+        print("Total samples:", total)
+        print("Data type:", type(data))
+        print("Data length:", len(data) if data else 0)
+        
+        # Try printing a small portion of data to avoid console hanging
+        if data and len(data) > 0:
+            print("First sample ID:", data[0].id if hasattr(data[0], 'id') else "No ID")
+            
+        # response
+        meta_data = MetaData(total=total, page=page, size=len(data) if data else 0)
+        return OkRespWithMeta[List[SampleResponse]](meta_data=meta_data, data=data)
+    except Exception as e:
+        print("Error in sample list_by:", str(e))
+        print("Error type:", type(e).__name__)
+        import traceback
+        print("Traceback:", traceback.format_exc())
+        raise
 
 
 @router.get(

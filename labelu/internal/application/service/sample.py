@@ -100,9 +100,9 @@ async def list_by(
         size=size,
         sorting=sorting,
     )
-
+    print("get detail list")
     total = crud_sample.count(db=db, task_id=task_id)
-
+    print('total: ', total, "获取完毕")
         # response
     return [
         SampleResponse(
@@ -111,19 +111,19 @@ async def list_by(
             state=sample.state,
             data=json.loads(sample.data),
             annotated_count=sample.annotated_count,
-            is_pre_annotated=is_sample_pre_annotated(db=db, task_id=task_id, current_user=current_user, sample_name=sample.file.filename if sample.file else None),
-            # file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
-            file=AttachmentResponse(id=449, filename='4f8f2a4dc3fe00adeb998757ea4b9727.png', url="/api/v1/tasks/attachment/upload/6/4f8f2a4dc3fe00adeb998757ea4b9727.png"), # 去掉预览，加快预览速度。
+            is_pre_annotated=is_sample_pre_annotated(db=db, task_id=task_id, sample_name=sample.file.filename if sample.file else None),
+            file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
+            # file=AttachmentResponse(id=449, filename='4f8f2a4dc3fe00adeb998757ea4b9727.png', url="/api/v1/tasks/attachment/upload/6/4f8f2a4dc3fe00adeb998757ea4b9727.png"), # 去掉预览，加快预览速度。
             created_at=sample.created_at,
             created_by=UserResp(
                 id=sample.owner.id,
                 username=sample.owner.username,
             ),
             updated_at=sample.updated_at,
-            updated_by=UserResp(
-                id=sample.updater.id,
-                username=sample.updater.username,
-            ),
+            updaters=[UserResp(
+                id=updater.id,
+                username=updater.username,
+            ) for updater in sample.updaters],
         )
         for sample in samples
     ], total
