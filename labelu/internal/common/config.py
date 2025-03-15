@@ -4,6 +4,7 @@ from pathlib import Path
 from loguru import logger
 from pydantic import BaseSettings, Field
 from dotenv import load_dotenv
+import urllib.parse
 
 from labelu.internal.common.io import get_data_dir
 
@@ -51,7 +52,10 @@ class Settings(BaseSettings):
 
     def get_mysql_url(self) -> str:
         """Build MySQL URL from individual components if needed"""
-        return f"mysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
+        encoded_password = urllib.parse.quote(self.MYSQL_PASSWORD, safe='')  # safe='' 代表所有特殊字符都编码
+        database_url = f"mysql://{self.MYSQL_USER}:{encoded_password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
+        database_url = database_url.replace("%", "%%")
+        return database_url
 
     @property
     def need_migration_to_mysql(self) -> bool:
