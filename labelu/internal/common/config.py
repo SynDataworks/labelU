@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         """Build MySQL URL from individual components if needed"""
         encoded_password = urllib.parse.quote_plus(self.MYSQL_PASSWORD, safe='')  # safe='' 代表所有特殊字符都编码
         database_url = f"mysql://{self.MYSQL_USER}:{encoded_password}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
-        database_url = database_url.replace("%", "%%")
+        # database_url = database_url.replace("%", "%%")
         return database_url
 
     @property
