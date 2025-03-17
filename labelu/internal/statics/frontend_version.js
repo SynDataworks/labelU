@@ -1,6 +1,6 @@
 (function () {
   window.__frontend = {
-    version: '5.8.1',
+    version: '5.8.2',
     deps: {
       '@labelu/audio-annotator-react': '1.8.1',
       '@labelu/components-react': '1.7.9',

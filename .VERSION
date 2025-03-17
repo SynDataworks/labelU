@@ -1,4 +1,4 @@
-release_assets_url: https://github.com/opendatalab/labelU-Kit/releases/download/v5.8.1/frontend.zip
+release_assets_url: https://github.com/opendatalab/labelU-Kit/releases/download/v5.8.2/frontend.zip
 release_version: true
-alpha_assets_url: https://github.com/opendatalab/labelU-Kit/releases/download/v5.7.0-alpha.8/frontend.zip
-alpha_version: v5.7.0-alpha.8
+alpha_assets_url: https://github.com/opendatalab/labelU-Kit/releases/download/v5.7.0-online.8/frontend.zip
+alpha_version: v5.7.0-online.8
