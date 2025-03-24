@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+.DS_Store
+*/.DS_Store
 
 # Distribution / packaging
 .Python
@@ -131,6 +133,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+labelu/internal/statics/*
 
 # Spyder project settings
 .spyderproject

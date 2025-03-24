@@ -26,6 +26,9 @@ class SampleResponse(BaseModel):
     file: Union[object, None] = Field(
         default=None, description="description: media attachment file"
     )
+    is_pre_annotated: Union[bool, None] = Field(
+        default=False, description="description: is pre annotated"
+    )
     annotated_count: Union[int, None] = Field(
         default=0, description="description: annotate result count"
     )
@@ -38,6 +41,6 @@ class SampleResponse(BaseModel):
     updated_at: Union[datetime, None] = Field(
         default=None, description="description: task updated at time"
     )
-    updated_by: Union[UserResp, None] = Field(
-        default=None, description="description: task updated by"
+    updaters: List[UserResp] | None = Field(
+        default=[], description="description: sample updaters"
     )

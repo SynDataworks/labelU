@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import List, Tuple, Union
@@ -12,8 +13,9 @@ from labelu.internal.common.config import settings
 from labelu.internal.common.converter import converter
 from labelu.internal.common.error_code import ErrorCode
 from labelu.internal.common.error_code import LabelUException
-from labelu.internal.adapter.persistence import crud_task
+from labelu.internal.adapter.persistence import crud_attachment, crud_pre_annotation, crud_task
 from labelu.internal.adapter.persistence import crud_sample
+from labelu.internal.domain.models.pre_annotation import TaskPreAnnotation
 from labelu.internal.domain.models.user import User
 from labelu.internal.domain.models.task import Task
 from labelu.internal.domain.models.task import TaskStatus
@@ -27,6 +29,22 @@ from labelu.internal.application.response.base import CommonDataResp
 from labelu.internal.application.response.sample import CreateSampleResponse
 from labelu.internal.application.response.sample import SampleResponse
 from labelu.internal.application.response.attachment import AttachmentResponse
+from labelu.internal.clients.ws import sampleConnectionManager
+from labelu.internal.common.websocket import Message, MessageType
+from labelu.internal.adapter.ws.sample import TaskSampleWsPayload
+
+def is_sample_pre_annotated(db: Session, task_id: int, sample_name: str | None = None) -> Tuple[List[TaskPreAnnotation], int]:
+    if sample_name is None:
+        return False
+    
+    _, total = crud_pre_annotation.list_by(
+        db=db,
+        task_id=task_id,
+        sample_name=sample_name,
+        size=1,
+    )
+    
+    return total > 0
 
 async def create(
     db: Session, task_id: int, cmd: List[CreateSampleCommand], current_user: User
@@ -69,24 +87,21 @@ async def list_by(
     task_id: Union[int, None],
     after: Union[int, None],
     before: Union[int, None],
-    pageNo: Union[int, None],
-    pageSize: int,
+    page: Union[int, None],
+    size: int,
     sorting: Union[str, None],
-    current_user: User,
 ) -> Tuple[List[SampleResponse], int]:
-
     samples = crud_sample.list_by(
         db=db,
         task_id=task_id,
-        owner_id=current_user.id,
         after=after,
         before=before,
-        pageNo=pageNo,
-        pageSize=pageSize,
+        page=page,
+        size=size,
         sorting=sorting,
     )
 
-    total = crud_sample.count(db=db, task_id=task_id, owner_id=current_user.id)
+    total = crud_sample.count(db=db, task_id=task_id)
 
     # response
     return [
@@ -96,25 +111,25 @@ async def list_by(
             state=sample.state,
             data=json.loads(sample.data),
             annotated_count=sample.annotated_count,
-            # file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
-            file=AttachmentResponse(id=449, filename='4f8f2a4dc3fe00adeb998757ea4b9727.png', url="/api/v1/tasks/attachment/upload/6/4f8f2a4dc3fe00adeb998757ea4b9727.png"), # 去掉预览，加快预览速度。
+            is_pre_annotated=is_sample_pre_annotated(db=db, task_id=task_id, sample_name=sample.file.filename if sample.file else None),
+            file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
             created_at=sample.created_at,
             created_by=UserResp(
                 id=sample.owner.id,
                 username=sample.owner.username,
             ),
             updated_at=sample.updated_at,
-            updated_by=UserResp(
-                id=sample.updater.id,
-                username=sample.updater.username,
-            ),
+            updaters=[UserResp(
+                id=updater.id,
+                username=updater.username,
+            ) for updater in sample.updaters],
         )
         for sample in samples
     ], total
 
 
 async def get(
-    db: Session, task_id: int, sample_id: int, current_user: User
+    db: Session, task_id: int, sample_id: int
 ) -> SampleResponse:
     sample = crud_sample.get(
         db=db,
@@ -134,6 +149,7 @@ async def get(
         inner_id=sample.inner_id,
         state=sample.state,
         data=json.loads(sample.data),
+        is_pre_annotated=is_sample_pre_annotated(db=db, task_id=task_id, sample_name=sample.file.filename if sample.file else None),
         file=AttachmentResponse(id=sample.file.id, filename=sample.file.filename, url=sample.file.url) if sample.file else None,
         annotated_count=sample.annotated_count,
         created_at=sample.created_at,
@@ -142,10 +158,10 @@ async def get(
             username=sample.owner.username,
         ),
         updated_at=sample.updated_at,
-        updated_by=UserResp(
-            id=sample.updater.id,
-            username=sample.updater.username,
-        ),
+        updaters=[UserResp(
+            id=updater.id,
+            username=updater.username,
+        ) for updater in sample.updaters],
     )
 
 
@@ -192,7 +208,7 @@ async def patch(
         # update task status
         if task.status != TaskStatus.FINISHED.value:
             statics = crud_sample.statics(
-                db=db, owner_id=current_user.id, task_ids=[task_id]
+                db=db, task_ids=[task_id]
             )
             task_obj_in = {Task.status.key: TaskStatus.INPROGRESS.value}
             new_sample_cnt = statics.get(f"{task.id}_{SampleState.NEW.value}", 0)
@@ -202,8 +218,25 @@ async def patch(
                 task_obj_in[Task.status.key] = TaskStatus.FINISHED.value
             if task.status != task_obj_in[Task.status.key]:
                 crud_task.update(db=db, db_obj=task, obj_in=task_obj_in)
+        # updaters
+        if current_user not in sample.updaters:
+            sample.updaters.append(current_user)
         # update task sample result
         updated_sample = crud_sample.update(db=db, db_obj=sample, obj_in=sample_obj_in)
+    
+    # tell other clients in the same sample page to refresh data
+    await sampleConnectionManager.send_message(
+        client_id=f"task_{task_id}",
+        message=Message(
+            type=MessageType.UPDATE,
+            data=TaskSampleWsPayload(
+                task_id=task_id,
+                user_id=current_user.id,
+                username=current_user.username,
+                sample_id=sample_id,
+            )
+        )
+    )
 
     # response
     return SampleResponse(
@@ -211,6 +244,7 @@ async def patch(
         inner_id=updated_sample.inner_id,
         state=updated_sample.state,
         data=json.loads(updated_sample.data),
+        is_pre_annotated=is_sample_pre_annotated(db=db, task_id=task_id, sample_name=sample.file.filename if sample.file else None),
         annotated_count=updated_sample.annotated_count,
         created_at=updated_sample.created_at,
         created_by=UserResp(
@@ -218,10 +252,10 @@ async def patch(
             username=updated_sample.owner.username,
         ),
         updated_at=updated_sample.updated_at,
-        updated_by=UserResp(
-            id=updated_sample.updater.id,
-            username=updated_sample.updater.username,
-        ),
+        updaters=[UserResp(
+            id=updater.id,
+            username=updater.username,
+        ) for updater in updated_sample.updaters],
     )
 
 
@@ -230,6 +264,18 @@ async def delete(
 ) -> CommonDataResp:
 
     with db.begin():
+        # delete media
+        samples = crud_sample.get_by_ids(db=db, sample_ids=sample_ids)
+        attachment_ids = [sample.file_id for sample in samples if sample.file_id]
+        attachments = crud_attachment.get_by_ids(db=db, attachment_ids=attachment_ids)
+        
+        attachments = crud_attachment.get_by_ids(
+            db=db, attachment_ids=attachment_ids
+        )
+        for attachment in attachments:
+            file_full_path = Path(settings.MEDIA_ROOT).joinpath(attachment.path)
+            os.remove(file_full_path)
+        
         crud_sample.delete(db=db, sample_ids=sample_ids)
     # response
     return CommonDataResp(ok=True)
@@ -261,21 +307,13 @@ async def export(
     )
 
     # converter to export_type
-    try:
-        file_full_path = converter.convert(
-            config=json.loads(task.config),
-            input_data=data,
-            out_data_dir=out_data_dir,
-            out_data_file_name_prefix=task_id,
-            format=export_type.value,
-        )
-    except Exception as e:
-        logger.error(data)
-        logger.error(e)
-        raise LabelUException(
-            code=ErrorCode.CODE_55002_SAMPLE_FORMAT_ERROR,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    file_full_path = converter.convert(
+        config=json.loads(task.config),
+        input_data=data,
+        out_data_dir=out_data_dir,
+        out_data_file_name_prefix=task_id,
+        format=export_type.value,
+    )
 
     # response
     return file_full_path
