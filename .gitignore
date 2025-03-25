@@ -139,6 +139,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
+labelu/internal/statics/*
+./labelu/internal/statics/*
 # mkdocs documentation
 /site
 

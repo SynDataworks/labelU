@@ -132,6 +132,7 @@ async def labelu_exception_handler(request: Request, exc: LabelUException):
 # customize http exception
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     logger.error(exc)
+    logger.info(f"http_exception_handler: {exc.status_code}, {request.url.path}, {exc.detail}")
     if (
         exc.status_code == status.HTTP_404_NOT_FOUND
         and not request.url.path.startswith(settings.API_V1_STR)
