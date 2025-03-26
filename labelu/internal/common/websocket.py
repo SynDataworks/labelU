@@ -6,6 +6,7 @@ from fastapi import WebSocket
 from loguru import logger
 import asyncio
 from dataclasses import dataclass
+import traceback
 
 from pydantic import BaseModel
 
@@ -22,97 +23,100 @@ class Message(BaseModel):
     type: MessageType
     data: Any = None
 
-@dataclass
-class ConnectionData:
-    id: str = None
+class Connection:
+    id: str
+    client_id: str
     ws: WebSocket = None
     data: Any = None
-    heartbeat_task: asyncio.Task = None
-    last_heartbeat: float = time.time()
+    last_heartbeat: float = 0
     
+    def __init__(self, id: str, client_id: str, ws: WebSocket, data: Any = None):
+        self.id = id
+        self.client_id = client_id
+        self.ws = ws
+        self.data = data
+        self.last_heartbeat = time.time()
+        
     def update_heartbeat(self):
         self.last_heartbeat = time.time()
 
+class ConnectionData(Dict[str, Connection]):
+    pass
+
 class ConnectionManager:
+    """WebSocket连接管理器"""
     def __init__(self):
-        self.active_connections: Dict[str, Dict[str, ConnectionData]] = {}
+        # client_id -> connection_id -> connection
+        self.active_connections: Dict[str, ConnectionData] = {}
+        self.lock = asyncio.Lock()
         
-    def _get_connection(self, client_id: str, connection_id: uuid.UUID) -> ConnectionData:
-        if client_id in self.active_connections:
-            return self.active_connections[client_id].get(connection_id)
-        
-        return None
+    async def connect(self, client_id: str, websocket: WebSocket, data: Any = None) -> Connection:
+        """建立新的WebSocket连接"""
+        try:
+            logger.info(f"WebSocket连接管理器: 正在接受连接 client_id={client_id}")
+            logger.debug(f"WebSocket headers: {dict(websocket.headers)}")
+            await websocket.accept()
+            logger.info(f"WebSocket连接管理器: 握手成功, 客户端IP={websocket.client.host}")
             
-    async def _heartbeat(self, client_id: str, connection_id: uuid.UUID):
-        while True:
-            try:
-                await asyncio.sleep(HEARTBEAT_INTERVAL)
+            async with self.lock:
+                connection_id = f"{client_id}_{time.time()}"
+                connection = Connection(id=connection_id, client_id=client_id, ws=websocket, data=data)
                 
-                # Send ping message
-                connection = self._get_connection(client_id, connection_id)
-                
-                if not connection:
-                    break
-                
-                await self.send_message(client_id, connection_id, Message(type=MessageType.PING))
-                
-                # Check if heartbeat timeout
-                if connection and time.time() - connection.last_heartbeat > HEARTBEAT_TIMEOUT:
-                    logger.error(f"Heartbeat timeout for client {connection.data.username}")
-                    await self.disconnect(client_id, connection.ws)
-                    break
-                
-            except Exception as e:
-                logger.error(f"Error in heartbeat for client {client_id}: {e}")
-                break
-            
-    async def connect(self, client_id: str, websocket: WebSocket, data: Any = None) -> ConnectionData:
-        await websocket.accept()
+                if client_id not in self.active_connections:
+                    self.active_connections[client_id] = {}
+                    
+                self.active_connections[client_id][connection_id] = connection
+                connections_count = len(self.active_connections[client_id])
+                logger.info(f"WebSocket连接管理器: 连接已添加 client_id={client_id}, connection_id={connection_id}, 当前连接数={connections_count}")
+                return connection
+        except Exception as e:
+            error_details = traceback.format_exc()
+            logger.error(f"WebSocket连接管理器: 连接失败 client_id={client_id}, 错误={str(e)}")
+            logger.debug(f"WebSocket连接错误详情:\n{error_details}")
+            raise
         
-        if client_id not in self.active_connections:
-            self.active_connections[client_id] = []
-            
-        logger.info(f"Client {client_id} connected")
-        id = str(uuid.uuid4())
-        connection_data = ConnectionData(
-            id=id,
-            ws=websocket,
-            data=data,
-            last_heartbeat=time.time(),
-            heartbeat_task=asyncio.create_task(self._heartbeat(client_id, id)),
-        )
-        
-        if not self.active_connections[client_id]:
-            self.active_connections[client_id] = {}
-            
-        self.active_connections[client_id][id] = connection_data
-        
-        return connection_data
-    
     async def disconnect(self, client_id: str, websocket: WebSocket):
+        """断开WebSocket连接"""
+        try:
+            async with self.lock:
+                if client_id not in self.active_connections:
+                    logger.warning(f"WebSocket连接管理器: 无法断开连接, client_id={client_id} 不存在")
+                    return
+                    
+                for connection_id, connection in list(self.active_connections[client_id].items()):
+                    if connection.ws == websocket:
+                        self.active_connections[client_id].pop(connection_id)
+                        logger.info(f"WebSocket连接管理器: 连接已断开 client_id={client_id}, connection_id={connection_id}")
+                        
+                        if len(self.active_connections[client_id]) == 0:
+                            self.active_connections.pop(client_id)
+                            logger.info(f"WebSocket连接管理器: 移除客户端 client_id={client_id} (无活动连接)")
+                        return
+        except Exception as e:
+            logger.error(f"WebSocket连接管理器: 断开连接时出错 client_id={client_id}, 错误={str(e)}")
+        
+    async def send_message(self, client_id: str, message: Message):
+        """向指定客户端的所有连接发送消息"""
         if client_id not in self.active_connections:
+            logger.warning(f"WebSocket连接管理器: 发送消息失败, client_id={client_id} 不存在")
             return
+            
+        connections = self.active_connections[client_id]
+        disconnect_connections = []
         
-        connection_to_remove = None
-        for connection_id, connection in self.active_connections[client_id].items():
-            if connection.ws == websocket:
-                connection.heartbeat_task.cancel()
-                connection_to_remove = connection
-                logger.info(f"Client {client_id} disconnected")
-                break
-        
-        if connection_to_remove is not None:
-            del self.active_connections[client_id][connection_to_remove.id]
-        
-        if client_id in self.active_connections and not self.active_connections[client_id]:
-            del self.active_connections[client_id]
-        
-    async def send_message(self, client_id: str, conn_id: uuid.UUID | None = None, message: Message = None):
-        if not conn_id:
-            if client_id in self.active_connections:
-                for connection in self.active_connections[client_id].values():
-                    await connection.ws.send_json(message.dict())
-        else:
-            connection = self._get_connection(client_id, conn_id)
-            if connection:
+        for connection_id, connection in connections.items():
+            try:
                 await connection.ws.send_json(message.dict())
+                logger.debug(f"WebSocket连接管理器: 消息已发送 client_id={client_id}, connection_id={connection_id}, 消息类型={message.type}")
+            except Exception as e:
+                logger.error(f"WebSocket连接管理器: 发送消息失败 client_id={client_id}, connection_id={connection_id}, 错误={str(e)}")
+                disconnect_connections.append(connection)
+                
+        for connection in disconnect_connections:
+            await self.disconnect(client_id, connection.ws)
+            
+    async def broadcast(self, message: Message):
+        """向所有连接广播消息"""
+        logger.info(f"WebSocket连接管理器: 开始广播消息 类型={message.type}, 客户端数={len(self.active_connections)}")
+        for client_id in self.active_connections:
+            await self.send_message(client_id, message)
